@@ -188,7 +188,8 @@ shared_examples_for 'fulltext query' do
     search Photo do
       keywords 'great pizza'
     end
-    connection.should have_last_search_with(:qf => 'caption_text^1.5 description_text')
+    # Hashes in 1.8 aren't ordered
+    connection.searches.last[:qf].split(" ").sort.join(" ").should eq 'caption_text^1.5 description_text'
   end
 
   it 'sets default boost with fields specified in options' do
@@ -410,6 +411,24 @@ shared_examples_for 'fulltext query' do
 
       connection.searches.last[:q].should eq "(_query_:\"{!edismax qf='description_text^1.2'}keyword1\" OR _query_:\"{!join from=photo_container_id_i to=id_i v=$#{q_name} fq=$#{fq_name}}\")"
       connection.searches.last[q_name].should eq "_query_:\"{!edismax qf='description_text'}keyword2\""
+      connection.searches.last[fq_name].should eq "type:Photo"
+    end
+
+    it "should recognize fields when adding from DSL, e.g. when calling boost_fields" do
+      srch = search PhotoContainer do
+        any do
+          fulltext 'keyword1', :fields => [:photo_description, :description] do
+            boost_fields(:photo_description => 1.3, :description => 1.5)
+          end
+        end
+      end
+
+      obj_id = find_ob_id(srch)
+      q_name = "qPhoto#{obj_id}"
+      fq_name = "f#{q_name}"
+
+      connection.searches.last[:q].should eq "(_query_:\"{!edismax qf='description_text^1.5'}keyword1\" OR _query_:\"{!join from=photo_container_id_i to=id_i v=$#{q_name} fq=$#{fq_name}}\")"
+      connection.searches.last[q_name].should eq "_query_:\"{!edismax qf='description_text^1.3'}keyword1\""
       connection.searches.last[fq_name].should eq "type:Photo"
     end
 
